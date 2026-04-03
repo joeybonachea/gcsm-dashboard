@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCMS Notes — AI Black Box Research Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  :root {
+    --bg: #f5f4f0;
+    --surface: #ffffff;
+    --surface2: #f0efe9;
+    --border: rgba(0,0,0,0.1);
+    --text: #1a1a18;
+    --muted: #6b6b66;
+    --red: #E24B4A;
+    --red-bg: #FCEBEB;
+    --red-text: #A32D2D;
+    --amber: #EF9F27;
+    --amber-bg: #FAEEDA;
+    --amber-text: #854F0B;
+    --green: #639922;
+    --green-bg: #EAF3DE;
+    --green-text: #3B6D11;
+    --blue: #378ADD;
+    --radius: 10px;
+    --radius-sm: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 2rem 1rem;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; }
+
+  header { margin-bottom: 2rem; }
+  header h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  header p { color: var(--muted); font-size: 13px; }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 12px;
+    margin-bottom: 1.5rem;
+  }
+
+  .metric {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+  }
+
+  .metric-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .metric-value { font-size: 26px; font-weight: 600; }
+  .metric-sub { font-size: 13px; font-weight: 400; color: var(--muted); margin-left: 4px; }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  @media (max-width: 680px) { .grid-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--surface);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+  }
+
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 1rem;
+  }
+
+  .chart-wrap { position: relative; width: 100%; height: 220px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    text-align: left;
+    padding: 8px 10px;
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 0.5px solid var(--border);
+  }
+  td { padding: 9px 10px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+
+  .badge {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+
+  .badge-high { background: var(--red-bg); color: var(--red-text); }
+  .badge-medium { background: var(--amber-bg); color: var(--amber-text); }
+  .badge-low { background: var(--green-bg); color: var(--green-text); }
+
+  .anomaly-tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin: 2px 2px 2px 0;
+    background: var(--surface2);
+    color: var(--muted);
+    border: 0.5px solid var(--border);
+  }
+
+  .score-bar {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--surface2);
+    margin-top: 4px;
+  }
+  .score-fill { height: 100%; border-radius: 2px; background: var(--blue); }
+
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .records-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .records-header .card-title { margin: 0; }
+
+  .filter-group { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+
+  .filter-btn {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 0.5px solid var(--border);
+    background: var(--surface);
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { background: var(--surface2); }
+  .filter-btn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+  .muted { color: var(--muted); }
+  .desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  #no-records {
+    text-align: center;
+    padding: 2rem;
+    color: var(--muted);
+    font-size: 13px;
+    display: none;
+  }
+
+  .source-tag {
+    font-size: 11px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--surface2);
+    color: var(--muted);
+    border: 0.5px solid var(--border);
+  }
+
+  .likelihood-medium { color: var(--amber-text); font-weight: 500; }
+  .likelihood-high { color: var(--red-text); font-weight: 500; }
+  .likelihood-low { color: var(--green-text); font-weight: 500; }
+
+  footer { margin-top: 2rem; text-align: center; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>GCMS Notes — AI Black Box Research</h1>
+    <p id="meta-desc">Loading...</p>
+  </header>
+
+  <div class="metrics" id="metrics"></div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Anomaly frequency</div>
+      <div class="chart-wrap"><canvas id="anomalyChart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Office frequency</div>
+      <div class="chart-wrap"><canvas id="officeChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom: 1rem;">
+    <div class="card-title">Anomaly types</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Count</th>
+          <th>Pct</th>
+          <th>Severity</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody id="anomalyTable"></tbody>
+    </table>
+  </div>
+
+  <div class="card" style="margin-bottom: 1rem;">
+    <div class="card-title">Top co-occurrences</div>
+    <table>
+      <thead>
+        <tr><th>Pair</th><th>Count</th><th>Pct</th></tr>
+      </thead>
+      <tbody id="coTable"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="records-header">
+      <div class="card-title">Records</div>
+      <div class="filter-group" id="filterGroup">
+        <button class="filter-btn active" data-filter="all">All</button>
+        <button class="filter-btn" data-filter="high">High severity</button>
+        <button class="filter-btn" data-filter="anomaly">Any anomaly</button>
+        <button class="filter-btn" data-filter="reddit">Reddit</button>
+        <button class="filter-btn" data-filter="canadavisa">CanadaVisa</button>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 35%">Title</th>
+          <th>Source</th>
+          <th>Automation</th>
+          <th>Anomalies</th>
+          <th>Key finding</th>
+        </tr>
+      </thead>
+      <tbody id="recordsTable"></tbody>
+    </table>
+    <div id="no-records">No records match this filter.</div>
+  </div>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>
+
+const JSON_URL = 'https://gist.githubusercontent.com/joeybonachea/aba43e1aad93f330bdcf487d97286594/raw/291af61ae0b9cba01a074d2af6bb97c590738db4/gcms-report-4-2.json';
+const CSV_URL  = 'https://gist.githubusercontent.com/joeybonachea/aba43e1aad93f330bdcf487d97286594/raw/291af61ae0b9cba01a074d2af6bb97c590738db4/gcms-report-4-2-2_summary.csv';
+
+const SEV_COLOR = { high: '#E24B4A', medium: '#EF9F27', low: '#639922' };
+
+async function init() {
+  let data;
+  try {
+    const res = await fetch(JSON_URL);
+    data = await res.json();
+  } catch (e) {
+    document.querySelector('header p').textContent = 'Could not load data. Check the JSON_URL in the script.';
+    return;
+  }
+
+  const { meta, summary, records } = data;
+
+  // meta
+  document.getElementById('meta-desc').textContent =
+    `${meta.description} — ${meta.totalRecordsAnalyzed} records analyzed, ${meta.semanticRecords} with semantic analysis.`;
+  document.getElementById('footer').textContent =
+    `${meta.title} · Data sources: Reddit (${summary.sourceBreakdown.reddit}), CanadaVisa (${summary.sourceBreakdown.canadavisa})`;
+
+  // metrics
+  const metricsEl = document.getElementById('metrics');
+  const metricDefs = [
+    { label: 'Total analyzed', value: meta.totalRecordsAnalyzed, sub: '' },
+    { label: 'Any anomaly', value: summary.recordsWithAnyAnomaly, sub: summary.recordsWithAnyAnomalyPct, color: '#EF9F27' },
+    { label: 'High severity', value: summary.recordsWithHighSeverityAnomaly, sub: summary.recordsWithHighSeverityAnomalyPct, color: '#E24B4A' },
+    { label: 'With semantic analysis', value: meta.semanticRecords, sub: '' },
+    { label: 'CanadaVisa sources', value: summary.sourceBreakdown.canadavisa, sub: '' },
+    { label: 'Reddit sources', value: summary.sourceBreakdown.reddit, sub: '' },
+  ];
+  metricsEl.innerHTML = metricDefs.map(m => `
+    <div class="metric">
+      <div class="metric-label">${m.label}</div>
+      <div class="metric-value" style="${m.color ? `color:${m.color}` : ''}">
+        ${m.value}<span class="metric-sub">${m.sub}</span>
+      </div>
+    </div>
+  `).join('');
+
+  // anomaly chart
+  const anom = summary.anomalyFrequency;
+  const anomKeys = Object.keys(anom);
+  new Chart(document.getElementById('anomalyChart'), {
+    type: 'bar',
+    data: {
+      labels: anomKeys.map(k => k.replace(/_/g, ' ')),
+      datasets: [{
+        data: anomKeys.map(k => anom[k].count),
+        backgroundColor: anomKeys.map(k => SEV_COLOR[anom[k].severity] + '33'),
+        borderColor: anomKeys.map(k => SEV_COLOR[anom[k].severity]),
+        borderWidth: 1,
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 11 }, color: '#888' } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 }, color: '#555' } }
+      }
+    }
+  });
+
+  // office chart
+  const offices = summary.officeFrequency;
+  const officeKeys = Object.keys(offices);
+  const officeColors = ['#378ADD','#1D9E75','#EF9F27','#D4537E','#888780'];
+  new Chart(document.getElementById('officeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: officeKeys,
+      datasets: [{
+        data: officeKeys.map(k => offices[k].count),
+        backgroundColor: officeColors,
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'right',
+          labels: { font: { size: 11 }, color: '#555', boxWidth: 12, padding: 12 }
+        }
+      }
+    }
+  });
+
+  // anomaly table
+  const anomTbody = document.getElementById('anomalyTable');
+  anomTbody.innerHTML = anomKeys.map(k => {
+    const a = anom[k];
+    return `<tr>
+      <td style="font-weight:500">${k.replace(/_/g,' ')}</td>
+      <td>${a.count}</td>
+      <td class="muted">${a.pct}</td>
+      <td><span class="badge badge-${a.severity}">${a.severity}</span></td>
+      <td class="desc">${a.description}</td>
+    </tr>`;
+  }).join('');
+
+  // co-occurrence table
+  const coTbody = document.getElementById('coTable');
+  coTbody.innerHTML = summary.topCoOccurrences.map(c => `
+    <tr>
+      <td>${c.pair}</td>
+      <td style="font-weight:500">${c.count}</td>
+      <td class="muted">${c.pct}</td>
+    </tr>
+  `).join('');
+
+  // records table with filter
+  let activeFilter = 'all';
+
+  function renderRecords() {
+    const filtered = records.filter(r => {
+      if (activeFilter === 'all') return true;
+      if (activeFilter === 'high') return r.highSeverityAnomalies && r.highSeverityAnomalies.length > 0;
+      if (activeFilter === 'anomaly') return r.anomalyIds && r.anomalyIds.length > 0;
+      if (activeFilter === 'reddit') return r.source === 'reddit';
+      if (activeFilter === 'canadavisa') return r.source === 'canadavisa';
+      return true;
+    });
+
+    const tbody = document.getElementById('recordsTable');
+    const noRec = document.getElementById('no-records');
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = '';
+      noRec.style.display = 'block';
+      return;
+    }
+    noRec.style.display = 'none';
+
+    tbody.innerHTML = filtered.map(r => {
+      const s = r.semantic;
+      const likelihood = s ? s.automationLikelihood : null;
+      const score = s ? s.automationScore : null;
+      const finding = s ? s.keyFindings : '';
+      const anomTags = (r.anomalyIds || []).map(id =>
+        `<span class="anomaly-tag">${id.replace(/_/g,' ')}</span>`
+      ).join('');
+
+      const scoreBar = score != null ? `
+        <div style="font-size:12px;margin-bottom:2px;">${score}<span style="color:#aaa">/10</span></div>
+        <div class="score-bar"><div class="score-fill" style="width:${score*10}%"></div></div>
+      ` : '<span class="muted">—</span>';
+
+      const likeClass = likelihood ? `likelihood-${likelihood}` : '';
+
+      return `<tr>
+        <td>
+          ${r.url
+            ? `<a href="${r.url}" target="_blank" rel="noopener">${r.title || r.id}</a>`
+            : (r.title || r.id)}
+          <div class="desc" style="margin-top:2px;">${r.id}</div>
+        </td>
+        <td><span class="source-tag">${r.source}</span></td>
+        <td>
+          ${likelihood ? `<span class="${likeClass}" style="font-size:12px">${likelihood}</span>` : '<span class="muted">—</span>'}
+          ${scoreBar}
+        </td>
+        <td>${anomTags || '<span class="muted">none</span>'}</td>
+        <td class="desc">${finding ? finding.slice(0, 180) + (finding.length > 180 ? '…' : '') : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  renderRecords();
+
+  document.getElementById('filterGroup').addEventListener('click', e => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter;
+    renderRecords();
+  });
+}
+
+init();
+</script>
+</body>
+</html>

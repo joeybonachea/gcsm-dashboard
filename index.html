@@ -264,10 +264,9 @@
   <footer id="footer"></footer>
 </div>
 
-<script>
-const JSON_URL = 'https://raw.githubusercontent.com/joeybonachea/gcsm-dashboard/refs/heads/main/gcms-report-4-2.json';
-const CSV_URL  = 'https://github.com/joeybonachea/gcsm-dashboard/blob/main/gcms-report-4-2-2_summary.csv';
-// ─────────────────────────────────────────────────────────────────────────────
+<script> 
+const JSON_URL = 'https://raw.githubusercontent.com/joeybonachea/gcsm-dashboard/refs/heads/main/gcms-report-4-2.json'; 
+const CSV_URL  = 'https://github.com/joeybonachea/gcsm-dashboard/blob/main/gcms-report-4-2-2_summary.csv'; 
 
 const SEV_COLOR = { high: '#E24B4A', medium: '#EF9F27', low: '#639922' };
 
@@ -384,6 +383,17 @@ async function init() {
     </tr>
   `).join('');
 
+  // build severity lookup from summary data
+  const anomalySeverity = {};
+  Object.entries(summary.anomalyFrequency).forEach(([k, v]) => { anomalySeverity[k] = v.severity; });
+
+  const sevRank = { high: 0, medium: 1, low: 2, undefined: 3 };
+  function recordSevRank(r) {
+    if (r.highSeverityAnomalies && r.highSeverityAnomalies.length > 0) return 0;
+    if (r.anomalyIds && r.anomalyIds.length > 0) return 1;
+    return 2;
+  }
+
   // records table with filter
   let activeFilter = 'all';
 
@@ -395,7 +405,7 @@ async function init() {
       if (activeFilter === 'reddit') return r.source === 'reddit';
       if (activeFilter === 'canadavisa') return r.source === 'canadavisa';
       return true;
-    });
+    }).sort((a, b) => recordSevRank(a) - recordSevRank(b));
 
     const tbody = document.getElementById('recordsTable');
     const noRec = document.getElementById('no-records');
@@ -412,9 +422,10 @@ async function init() {
       const likelihood = s ? s.automationLikelihood : null;
       const score = s ? s.automationScore : null;
       const finding = s ? s.keyFindings : '';
-      const anomTags = (r.anomalyIds || []).map(id =>
-        `<span class="anomaly-tag">${id.replace(/_/g,' ')}</span>`
-      ).join('');
+      const anomTags = (r.anomalyIds || []).map(id => {
+        const sev = anomalySeverity[id] || 'low';
+        return `<span class="badge badge-${sev}" style="margin:2px 2px 2px 0;font-size:11px;">${id.replace(/_/g,' ')}</span>`;
+      }).join('');
 
       const scoreBar = score != null ? `
         <div style="font-size:12px;margin-bottom:2px;">${score}<span style="color:#aaa">/10</span></div>
